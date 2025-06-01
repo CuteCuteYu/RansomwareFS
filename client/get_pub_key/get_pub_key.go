@@ -1,6 +1,7 @@
 package get_pub_key
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,7 +10,7 @@ import (
 
 const (
 	ServerAddr = "localhost"
-	ServerPort = "8080"
+	ServerPort = "443" // Changed to HTTPS port
 )
 
 type KeyResponse struct {
@@ -18,10 +19,16 @@ type KeyResponse struct {
 }
 
 func GetPublicKey() string {
-	baseURL := fmt.Sprintf("http://%s:%s", ServerAddr, ServerPort)
+	// Create custom transport to skip TLS verification (for self-signed certs)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	baseURL := fmt.Sprintf("https://%s:%s", ServerAddr, ServerPort)
 
 	// First request to /key to generate keys
-	resp, err := http.Get(fmt.Sprintf("%s/key", baseURL))
+	resp, err := client.Get(fmt.Sprintf("%s/key", baseURL))
 	if err != nil {
 		fmt.Printf("Error requesting /key: %v\n", err)
 		return ""
@@ -29,7 +36,7 @@ func GetPublicKey() string {
 	defer resp.Body.Close()
 
 	// Then request to /get_key to get private key
-	resp, err = http.Get(fmt.Sprintf("%s/get_key", baseURL))
+	resp, err = client.Get(fmt.Sprintf("%s/get_key", baseURL))
 	if err != nil {
 		fmt.Printf("Error requesting /get_key: %v\n", err)
 		return ""

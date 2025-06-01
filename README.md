@@ -52,6 +52,12 @@ go mod tidy
 ```
 
 ### 3. Start Public Key Server
+
+**Recommendation:** Replace the SSL certificates with ones from other sources before starting
+
+Certificate location:
+`ssl-cert` folder
+
 ```bash
 go run ./server.go ./handler.go
 ```
