@@ -33,7 +33,8 @@ This is a basic ransomware project framework for educational purposes, designed 
 2. Desktop wallpaper replacement (resource section attempted but failed)
 3. Multiple encryption method implementations
 4. Multi-folder polling
-5. HTTPS for public key transmission
+
+~~5. HTTPS for public key transmission~~
 
 ## Installation
 
