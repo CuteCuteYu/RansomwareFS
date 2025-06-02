@@ -1,7 +1,7 @@
 package main
 
 import (
-	"RansomwareFs/key_manage"
+	"RansomwareFs/ecc_key_manage"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,7 +45,7 @@ func getKeysHandler(c *gin.Context) {
 
 func generateKeysHandler(c *gin.Context) {
 	// Example: Generate ECC key pair
-	err := key_manage.GenerateECCKey(521, "./keypair/")
+	err := ecc_key_manage.GenerateECCKey(521, "./keypair/")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to generate keys: " + err.Error(),

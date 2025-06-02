@@ -6,69 +6,66 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
-	"os"
-	"path/filepath"
 
 	"golang.org/x/crypto/hkdf"
 )
 
-const (
-	FileExtension = ".exe"
-)
-
-func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
-	// Read private key file
-	keyBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key file: %v", err)
+func eccDecrypt(encryptedData []byte, privateKeyPEM string, ephemeralPubKeyBase64 string) ([]byte, error) {
+	// Parse PEM format private key
+	block, _ := pem.Decode([]byte(privateKeyPEM))
+	if block == nil || block.Type != "ecdsa private key" {
+		return nil, fmt.Errorf("invalid private key format")
 	}
 
-	// Decode PEM block
-	block, _ := pem.Decode(keyBytes)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
-	}
-
-	// Parse ECDSA private key
+	// Parse the private key
 	privateKey, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %v", err)
 	}
 
-	return privateKey, nil
-}
-
-func EccDecrypt(cipherText []byte, privateKey *ecdsa.PrivateKey) ([]byte, error) {
-	// Extract ephemeral public key (first 91 bytes for P256 curve)
-	if len(cipherText) < 91 {
-		return nil, fmt.Errorf("invalid ciphertext length")
+	// Decode ephemeral public key from base64
+	ephemeralPubKeyBytes, err := base64.StdEncoding.DecodeString(ephemeralPubKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode ephemeral public key: %v", err)
 	}
 
-	ephemeralPubBytes := cipherText[:91]
-	rest := cipherText[91:]
-
 	// Parse ephemeral public key
-	ephemeralPub, err := x509.ParsePKIXPublicKey(ephemeralPubBytes)
+	ephemeralPubKey, err := x509.ParsePKIXPublicKey(ephemeralPubKeyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ephemeral public key: %v", err)
 	}
 
-	ephemeralECDSAPub, ok := ephemeralPub.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("not an ECDSA public key")
+	// Verify public key type and curve
+	ecdsaPubKey, ok := ephemeralPubKey.(*ecdsa.PublicKey)
+	if !ok || ecdsaPubKey.Curve != privateKey.Curve {
+		return nil, fmt.Errorf("ephemeral public key type or curve mismatch")
 	}
 
+	// Extract nonce and ciphertext
+	gcmNonceSize := 12
+	minCiphertextSize := 16
+
+	// Verify data length
+	if len(encryptedData) < gcmNonceSize+minCiphertextSize {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+
+	// Extract nonce and ciphertext
+	nonce := encryptedData[:gcmNonceSize]
+	cipherText := encryptedData[gcmNonceSize:]
+
 	// Perform ECDH key exchange
-	x, _ := privateKey.Curve.ScalarMult(ephemeralECDSAPub.X, ephemeralECDSAPub.Y, privateKey.D.Bytes())
+	x, _ := ecdsaPubKey.Curve.ScalarMult(ecdsaPubKey.X, ecdsaPubKey.Y, privateKey.D.Bytes())
 	if x == nil {
 		return nil, fmt.Errorf("failed to compute shared secret")
 	}
+	secret := x.Bytes()
 
 	// Derive AES key using HKDF
-	secret := x.Bytes()
 	hash := sha256.New
 	hkdf := hkdf.New(hash, secret, nil, nil)
 	aesKey := make([]byte, 32) // AES-256
@@ -76,93 +73,69 @@ func EccDecrypt(cipherText []byte, privateKey *ecdsa.PrivateKey) ([]byte, error)
 		return nil, fmt.Errorf("failed to derive AES key: %v", err)
 	}
 
-	// Extract nonce and ciphertext
-	block, err := aes.NewCipher(aesKey)
+	// Decrypt with AES-GCM
+	aesBlock, err := aes.NewCipher(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AES cipher: %v", err)
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := cipher.NewGCM(aesBlock)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %v", err)
+		return nil, fmt.Errorf("failed to create GCM cipher: %v", err)
 	}
 
-	nonceSize := gcm.NonceSize()
-	if len(rest) < nonceSize {
-		return nil, fmt.Errorf("invalid ciphertext length")
-	}
-
-	nonce := rest[:nonceSize]
-	cipherData := rest[nonceSize:]
-
-	// Decrypt with AES-GCM
-	plainText, err := gcm.Open(nil, nonce, cipherData, nil)
+	plainText, err := gcm.Open(nil, nonce, cipherText, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %v", err)
+		return nil, fmt.Errorf("decryption failed: %v", err)
 	}
 
 	return plainText, nil
 }
 
-func DecryptFile(privateKeyPath string) error {
-	// Load private key
-	privateKey, err := loadPrivateKey(privateKeyPath)
+func DecryptFile(privateKeyPEM string, filename string, position int, pubKeyBase64 string) error {
+	// Read file
+	fileContent, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return fmt.Errorf("failed to load private key: %v", err)
+		return fmt.Errorf("failed to read file: %v", err)
 	}
 
-	// Open current directory
-	dir, err := os.Getwd()
+	// Get encrypted section
+	if position >= len(fileContent) {
+		return fmt.Errorf("invalid file position")
+	}
+
+	// Read all data from position since encrypted data contains ephemeral public key
+	encryptedSection := fileContent[position:]
+
+	// Decrypt section
+	decryptedSection, err := eccDecrypt(encryptedSection, privateKeyPEM, pubKeyBase64)
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %v", err)
+		return fmt.Errorf("failed to decrypt data segment: %v", err)
 	}
 
-	// Find and process all .exe files
-	files, err := ioutil.ReadDir(dir)
+	// Verify decrypted data length
+	if len(decryptedSection) != 100 {
+		return fmt.Errorf("invalid decrypted data length: expected 100 bytes, got %d bytes", len(decryptedSection))
+	}
+
+	// Create new file content with adjusted size for decrypted data
+	newContent := make([]byte, position+100+len(fileContent[position+len(encryptedSection):]))
+
+	// Copy three file sections:
+	// 1. First part (unmodified)
+	copy(newContent[:position], fileContent[:position])
+
+	// 2. Decrypted data (100 bytes)
+	copy(newContent[position:position+len(decryptedSection)], decryptedSection)
+
+	// 3. Second part (from encrypted data end position)
+	copy(newContent[position+100:], fileContent[position+len(encryptedSection):])
+
+	// Write back to file
+	err = ioutil.WriteFile(filename, newContent, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to read directory: %v", err)
+		return fmt.Errorf("failed to write decrypted file: %v", err)
 	}
 
-	for _, file := range files {
-		if filepath.Ext(file.Name()) == FileExtension {
-			filePath := filepath.Join(dir, file.Name())
-
-			// Read file contents
-			fileContent, err := ioutil.ReadFile(filePath)
-			if err != nil {
-				fmt.Printf("Failed to read file: %s %v\n", filePath, err)
-				continue
-			}
-
-			if len(fileContent) < 100 {
-				fmt.Printf("File too small: %s\n", filePath)
-				continue
-			}
-
-			// Get middle 100 bytes
-			middleStart := len(fileContent)/2 - 50
-			middleEnd := middleStart + 100
-			middleContent := fileContent[middleStart:middleEnd]
-
-			// Decrypt middle content
-			decryptedMiddle, err := EccDecrypt(middleContent, privateKey)
-			if err != nil {
-				fmt.Printf("Failed to decrypt file: %s %v\n", filePath, err)
-				continue
-			}
-
-			// Replace middle section with decrypted content
-			copy(fileContent[middleStart:middleEnd], decryptedMiddle)
-
-			// Write modified contents back
-			err = ioutil.WriteFile(filePath, fileContent, 0644)
-			if err != nil {
-				fmt.Printf("Failed to write decrypted file: %s %v\n", filePath, err)
-				continue
-			}
-
-			fmt.Printf("Successfully decrypted: %s\n", filePath)
-		}
-	}
 	return nil
 }

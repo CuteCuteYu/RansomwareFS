@@ -1,4 +1,4 @@
-package get_pub_key
+package ecc_get_pub_key
 
 import (
 	"crypto/tls"

